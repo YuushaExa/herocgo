@@ -1,7 +1,7 @@
 ---
-title: "fvrtvrt"
-date: "3443"
-author: "rrvrv"
+title: "TestingTitles"
+date: "date-name"
+author: "author-name"
 ---
 
 # My First Blog Post
