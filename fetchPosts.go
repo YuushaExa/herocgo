@@ -1,156 +1,131 @@
-func main() {
-    startTime := time.Now()
-    postsDirPath := "./posts" // Directory containing JSON and MD files
-    outputDir := "./public"    // Output directory for generated HTML files
-    archetypePath := "./archetypes/post.md" // Path to the archetype file
+package main
 
-    // Create output directory
-    os.MkdirAll(outputDir, os.ModePerm)
+import (
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
 
-    // Command-line flags
-    createPostFlag := flag.String("new", "", "Create a new post with the given title")
-    flag.Parse()
+	"github.com/pelletier/go-toml/v2"
+	"gopkg.in/yaml.v3"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/renderer/html"
+)
 
-    // Load configuration
-    config := Config{}
-    configData, err := ioutil.ReadFile("config.toml")
-    if err != nil {
-        fmt.Println("Error reading config.toml:", err)
-        return
-    }
-
-    // Decode the TOML file
-    if err := toml.Unmarshal(configData, &config); err != nil {
-        fmt.Println("Error decoding config.toml:", err)
-        return
-    }
-
-    archetypeData, err := ioutil.ReadFile(archetypePath)
-    if err != nil {
-        fmt.Println("Error reading archetype file:", err)
-        return
-    }
-
-    // If the -new flag is set, create a new post
-    if *createPostFlag != "" {
-        if err := createPost(*createPostFlag, archetypePath, postsDirPath, config.Params.Author); err != nil {
-            fmt.Println("Error creating post:", err)
-            return
-        }
-        return
-    }
-
-    allPosts := []Post{}
-    totalPages := 0
-    nonPageFiles := 0
-    staticFiles := 0
-
-    err = filepath.Walk(postsDirPath, func(path string, info os.FileInfo, err error) error {
-        if err != nil {
-            return err
-        }
-
-        if info.IsDir() {
-            return nil
-        }
-
-        switch {
-        case strings.HasSuffix(info.Name(), ".json"):
-            // Read and parse JSON files
-            data, err := ioutil.ReadFile(path)
-            if err != nil {
-                return err
-            }
-            var posts []Post
-            err = json.Unmarshal(data, &posts)
-            if err != nil {
-                return err
-            }
-            folder := filepath.Dir(path)
-            for i := range posts {
-                posts[i].Folder = folder
-                allPosts = append(allPosts, posts[i])
-            }
-            totalPages += len(posts)
-            nonPageFiles++
-
-        case strings.HasSuffix(info.Name(), ".md"):
-            // Read Markdown files
-            data, err := ioutil.ReadFile(path)
-            if err != nil {
-                return err
-            }
-
-            // Parse front matter and content
-            post, content, err := parseFrontMatter(data)
-            if err != nil {
-                return err
-            }
-
-            // Convert Markdown content to HTML
-            var buf strings.Builder
-            md := goldmark.New()
-            if err := md.Convert([]byte(content), &buf); err != nil {
-                return err
-            }
-
-            // Create a data structure for the template
-            dataForTemplate := struct {
-                Title   string
-                Content string
-                BaseURL string
-                Author  string
-                Date    string
-            }{
-                Title:   post.Title,
-                Content: buf.String(),
-                BaseURL: config.BaseURL,
-                Author:  post.Author,
-                Date:    post.Date,
-            }
-
-            // Create the output HTML file using the archetype as a template
-            tmpl, err := template.New("post").Parse(string(archetypeData))
-            if err != nil {
-                return fmt.Errorf("error parsing template: %w", err)
-            }
-
-            // Create the output file
-            outputFileName := strings.ToLower(strings.ReplaceAll(post.Title, " ", "-")) + ".html"
-            outputFilePath := filepath.Join(outputDir, outputFileName)
-
-            file, err := os.Create(outputFilePath)
-            if err != nil {
-                return fmt.Errorf("error creating file: %w", err)
-            }
-            defer file.Close()
-
-                     // Execute the template and write to file
-            if err := tmpl.Execute(file, dataForTemplate); err != nil {
-                return fmt.Errorf("error executing template: %w", err)
-            }
-
-            // Log the relative URL
-            relativeUrl := filepath.Join(post.Folder, outputFileName)
-            fmt.Println("Created post:", relativeUrl)
-            totalPages++
-
-        default:
-            staticFiles++
-        }
-        return nil
-    })
-
-    if err != nil {
-        fmt.Println("Error:", err)
-        return
-    }
-
-    // After processing all posts, log the statistics
-    fmt.Println("--- Build Statistics ---")
-    fmt.Printf("Total Pages: %d\n", totalPages)
-    fmt.Printf("Non-page Files: %d\n", nonPageFiles)
-    fmt.Printf("Static Files: %d\n", staticFiles)
-    fmt.Printf("Total Build Time: %v\n", time.Since(startTime))
+type FrontMatter struct {
+	Title       string `yaml:"title" toml:"title"`
+	Description string `yaml:"description" toml:"description"`
+	Date        string `yaml:"date" toml:"date"`
 }
 
+func main() {
+	postsDir := "./posts/"
+	publicDir := "./public/"
+
+	if err := os.MkdirAll(publicDir, os.ModePerm); err != nil {
+		log.Fatalf("Failed to create public directory: %v", err)
+	}
+
+	files, err := ioutil.ReadDir(postsDir)
+	if err != nil {
+		log.Fatalf("Failed to read posts directory: %v", err)
+	}
+
+	for _, file := range files {
+		if filepath.Ext(file.Name()) == ".md" {
+			processMarkdownFile(filepath.Join(postsDir, file.Name()), publicDir)
+		}
+	}
+}
+
+func processMarkdownFile(filePath, outputDir string) {
+	content, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		log.Printf("Failed to read file %s: %v", filePath, err)
+		return
+	}
+
+	frontMatter, markdownContent := extractFrontMatter(content)
+	htmlContent, err := convertMarkdownToHTML(markdownContent)
+	if err != nil {
+		log.Printf("Failed to convert Markdown for %s: %v", filePath, err)
+		return
+	}
+
+	outputFileName := filepath.Base(filePath[:len(filePath)-len(filepath.Ext(filePath))]) + ".html"
+	outputPath := filepath.Join(outputDir, outputFileName)
+
+	writeHTMLFile(outputPath, frontMatter, htmlContent)
+}
+
+func extractFrontMatter(content []byte) (FrontMatter, []byte) {
+	var fm FrontMatter
+	contentStr := string(content)
+	
+	if strings.HasPrefix(contentStr, "---") || strings.HasPrefix(contentStr, "+++") {
+		parts := strings.SplitN(contentStr, "\n---\n", 2)
+		if len(parts) < 2 {
+			parts = strings.SplitN(contentStr, "\n+++\n", 2)
+		}
+
+		if len(parts) == 2 {
+			meta := parts[0]
+			body := parts[1]
+
+			if strings.HasPrefix(meta, "---") {
+				if err := yaml.Unmarshal([]byte(meta), &fm); err != nil {
+					log.Printf("Failed to parse YAML front matter: %v", err)
+				}
+			} else if strings.HasPrefix(meta, "+++") {
+				if err := toml.Unmarshal([]byte(meta), &fm); err != nil {
+					log.Printf("Failed to parse TOML front matter: %v", err)
+				}
+			}
+			return fm, []byte(body)
+		}
+	}
+	return fm, content
+}
+
+func convertMarkdownToHTML(content []byte) (string, error) {
+	md := goldmark.New(
+		goldmark.WithExtensions(extension.GFM),
+		goldmark.WithRendererOptions(html.WithHardWraps()),
+	)
+
+	var buf strings.Builder
+	if err := md.Convert(content, &buf); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent string) {
+	file, err := os.Create(outputPath)
+	if err != nil {
+		log.Printf("Failed to create HTML file: %v", err)
+		return
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(fmt.Sprintf(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>%s</title>
+    <meta name="description" content="%s">
+</head>
+<body>
+%s
+</body>
+</html>`, fm.Title, fm.Description, htmlContent))
+
+	if err != nil {
+		log.Printf("Failed to write to HTML file: %v", err)
+	}
+}
