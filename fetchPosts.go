@@ -3,26 +3,49 @@ package main
 import (
     "encoding/json"
     "fmt"
+    "html/template"
     "io/ioutil"
     "os"
     "path/filepath"
     "strings"
     "time"
 
+    "github.com/BurntSushi/toml"
     "github.com/yuin/goldmark"
 )
 
+type Config struct {
+    BaseURL      string `toml:"baseURL"`
+    Title        string `toml:"title"`
+    Theme        string `toml:"theme"`
+    LanguageCode string `toml:"languageCode"`
+    Params       Params `toml:"params"`
+}
+
+type Params struct {
+    Author      string `toml:"author"`
+    Description string `toml:"description"`
+}
+
 type Post struct {
-    Title   string `json:"title"`
-    Content string `json:"content"`
-    Date    string `json:"date"`
-    Folder  string `json:"folder"`
+    Title   string
+    Content string
+    Date    string
+    Folder  string
 }
 
 func main() {
     startTime := time.Now()
     postsDirPath := "./posts" // Directory containing JSON and MD files
     outputDir := "./public"    // Output directory for generated HTML files
+    archetypePath := "./archetypes/post.md" // Path to the archetype file
+
+    // Load configuration
+    var config Config
+    if _, err := toml.DecodeFile("config.toml", &config); err != nil {
+        fmt.Println("Error reading config.toml:", err)
+        return
+    }
 
     allPosts := []Post{}
     totalPages := 0
@@ -89,9 +112,16 @@ func main() {
 
     md := goldmark.New()
 
+    // Read the archetype file
+    archetypeData, err := ioutil.ReadFile(archetypePath)
+    if err != nil {
+        fmt.Println("Error reading archetype file:", err)
+        return
+    }
+
     for _, post := range allPosts {
         baseFileName := strings.ToLower(strings.ReplaceAll(post.Title, " ", "-"))
-        fileName := fmt.Sprintf("%s.html", baseFileName)
+            fileName := fmt.Sprintf("%s.html", baseFileName)
         count := 1
 
         // Check for duplicates and modify the file name if necessary
@@ -113,27 +143,43 @@ func main() {
             return
         }
 
-        htmlContent := fmt.Sprintf(`<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>%s</title>
-</head>
-<body>
-    <h1>%s</h1>
-    <div>%s</div> 
-</body>
-</html>
-`, post.Title, post.Title, buf.String())
+        // Create a data structure for the template
+        data := struct {
+            Title   string
+            Content string
+            BaseURL string
+            Author  string
+            Date    string
+        }{
+            Title:   post.Title,
+            Content: buf.String(),
+            BaseURL: config.BaseURL,
+            Author:  config.Params.Author,
+            Date:    post.Date,
+        }
 
-        err := ioutil.WriteFile(filePath, []byte(htmlContent), 0644)
+        // Create the output HTML file using the template
+        tmpl, err := template.New("post").Parse(string(archetypeData))
         if err != nil {
-            fmt.Println("Error writing file:", err)
+            fmt.Println("Error parsing template:", err)
             return
         }
 
-            // Log the relative URL
+        // Create the output file
+        file, err := os.Create(filePath)
+        if err != nil {
+            fmt.Println("Error creating file:", err)
+            return
+        }
+        defer file.Close()
+
+        // Execute the template and write to file
+        if err := tmpl.Execute(file, data); err != nil {
+            fmt.Println("Error executing template:", err)
+            return
+        }
+
+        // Log the relative URL
         relativeUrl := filepath.Join(post.Folder, fileName)
         fmt.Println("Created post:", relativeUrl)
     }
