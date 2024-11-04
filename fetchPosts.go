@@ -14,7 +14,7 @@ import (
 
     "github.com/pelletier/go-toml/v2" // Use this package for TOML
     "github.com/yuin/goldmark"
-    "gopkg.in/yaml.v2" // For parsing front matter
+    "gopkg.in/yaml.v3" // For parsing front matter
 )
 
 type Config struct {
