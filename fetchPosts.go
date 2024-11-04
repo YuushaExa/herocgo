@@ -8,6 +8,8 @@ import (
     "path/filepath"
     "strings"
     "time"
+
+    "github.com/yuin/goldmark"
 )
 
 type Post struct {
@@ -85,6 +87,8 @@ func main() {
 
     titleCount := make(map[string]bool)
 
+    md := goldmark.New()
+
     for _, post := range allPosts {
         baseFileName := strings.ToLower(strings.ReplaceAll(post.Title, " ", "-"))
         fileName := fmt.Sprintf("%s.html", baseFileName)
@@ -102,6 +106,13 @@ func main() {
 
         filePath := filepath.Join(folderPath, fileName)
 
+        // Convert Markdown to HTML
+        var buf strings.Builder
+        if err := md.Convert([]byte(post.Content), &buf); err != nil {
+            fmt.Println("Error converting Markdown to HTML:", err)
+            return
+        }
+
         htmlContent := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -114,7 +125,7 @@ func main() {
     <div>%s</div> 
 </body>
 </html>
-`, post.Title, post.Title, post.Content)
+`, post.Title, post.Title, buf.String())
 
         err := ioutil.WriteFile(filePath, []byte(htmlContent), 0644)
         if err != nil {
@@ -122,7 +133,7 @@ func main() {
             return
         }
 
-        // Log the relative URL
+            // Log the relative URL
         relativeUrl := filepath.Join(post.Folder, fileName)
         fmt.Println("Created post:", relativeUrl)
     }
