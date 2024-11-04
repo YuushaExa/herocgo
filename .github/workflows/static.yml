@@ -31,9 +31,7 @@ jobs:
         
     - name: Build and Run
       run: |
-        go mod download
-        go build -o ssg 
-        ./ssg
+        go mod download && go build -o ssg && ./ssg
         
     - name: Setup Pages and Upload Artifact
       id: pages
