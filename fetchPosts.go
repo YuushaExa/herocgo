@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
@@ -14,7 +15,6 @@ import (
 	"github.com/yuin/goldmark"
 )
 
-// FrontMatter stores the metadata from front matter
 type FrontMatter struct {
 	Title       string `yaml:"title" toml:"title"`
 	Description string `yaml:"description" toml:"description"`
@@ -25,30 +25,51 @@ func main() {
 	postsDir := "./posts/"
 	publicDir := "./public/"
 	var totalPages, nonPageFiles, staticFiles int
+	var mu sync.Mutex  // Mutex to protect shared counters
+	var wg sync.WaitGroup
 
 	start := time.Now()
 
+	// Create output directory
 	if err := os.MkdirAll(publicDir, os.ModePerm); err != nil {
 		log.Fatalf("Failed to create public directory: %v", err)
 	}
 
+	// Read files in the posts directory
 	files, err := os.ReadDir(postsDir)
 	if err != nil {
 		log.Fatalf("Failed to read posts directory: %v", err)
 	}
 
+	// Process each file concurrently
 	for _, file := range files {
-		if filepath.Ext(file.Name()) == ".md" {
-			if err := processMarkdownFile(filepath.Join(postsDir, file.Name()), publicDir); err != nil {
-				log.Printf("Failed to process file %s: %v", file.Name(), err)
+		wg.Add(1)  // Increment WaitGroup counter
+		go func(file os.DirEntry) {
+			defer wg.Done() // Decrement WaitGroup counter when done
+
+			// Process only Markdown files
+			if filepath.Ext(file.Name()) == ".md" {
+				if err := processMarkdownFile(filepath.Join(postsDir, file.Name()), publicDir); err != nil {
+					log.Printf("Failed to process file %s: %v", file.Name(), err)
+				} else {
+					// Lock the counter update to avoid race conditions
+					mu.Lock()
+					totalPages++
+					mu.Unlock()
+				}
 			} else {
-				totalPages++
+				// Lock the counter update to avoid race conditions
+				mu.Lock()
+				nonPageFiles++
+				mu.Unlock()
 			}
-		} else {
-			nonPageFiles++
-		}
+		}(file)  // Pass file as argument to the goroutine
 	}
 
+	// Wait for all goroutines to finish
+	wg.Wait()
+
+	// Calculate total build time
 	totalBuildTime := time.Since(start)
 
 	// Print build statistics
