@@ -1,6 +1,7 @@
 ---
 title: "{{ .Title }}"
-date: {{ .Date }}
-tags: []
-categories: []
+date: "{{ .Date }}"
+author: "{{ .Author }}"
 ---
+
+{{ .Content }}
