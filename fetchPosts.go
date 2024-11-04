@@ -10,7 +10,7 @@ import (
     "strings"
     "time"
 
-    "github.com/pelletier/go-toml"
+    "github.com/pelletier/go-toml/v2"
     "github.com/yuin/goldmark"
 )
 
