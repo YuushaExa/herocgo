@@ -35,6 +35,7 @@ type Post struct {
     Content string
     Date    string
     Author  string
+    Folder  string
 }
 
 func parseFrontMatter(data []byte) (Post, string, error) {
