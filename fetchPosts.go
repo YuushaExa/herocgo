@@ -10,7 +10,7 @@ import (
     "strings"
     "time"
 
-    "github.com/pelletier/go-toml/v2"
+    "github.com/pelletier/go-toml/v2" // Use this package for TOML
     "github.com/yuin/goldmark"
 )
 
@@ -41,9 +41,16 @@ func main() {
     archetypePath := "./archetypes/post.md" // Path to the archetype file
 
     // Load configuration
-    var config Config
-    if _, err := toml.DecodeFile("config.toml", &config); err != nil {
+    config := Config{}
+    configData, err := ioutil.ReadFile("config.toml")
+    if err != nil {
         fmt.Println("Error reading config.toml:", err)
+        return
+    }
+
+    // Decode the TOML file
+    if err := toml.Unmarshal(configData, &config); err != nil {
+        fmt.Println("Error decoding config.toml:", err)
         return
     }
 
@@ -52,7 +59,7 @@ func main() {
     nonPageFiles := 0
     staticFiles := 0
 
-    err := filepath.Walk(postsDirPath, func(path string, info os.FileInfo, err error) error {
+    err = filepath.Walk(postsDirPath, func(path string, info os.FileInfo, err error) error {
         if err != nil {
             return err
         }
@@ -121,7 +128,7 @@ func main() {
 
     for _, post := range allPosts {
         baseFileName := strings.ToLower(strings.ReplaceAll(post.Title, " ", "-"))
-            fileName := fmt.Sprintf("%s.html", baseFileName)
+           fileName := fmt.Sprintf("%s.html", baseFileName)
         count := 1
 
         // Check for duplicates and modify the file name if necessary
@@ -158,7 +165,7 @@ func main() {
             Date:    post.Date,
         }
 
-        // Create the output HTML file using the template
+        // Create the output HTML file using the archetype as a template
         tmpl, err := template.New("post").Parse(string(archetypeData))
         if err != nil {
             fmt.Println("Error parsing template:", err)
@@ -191,3 +198,4 @@ func main() {
     fmt.Printf("Static Files: %d\n", staticFiles)
     fmt.Printf("Total Build Time: %v\n", time.Since(startTime))
 }
+
