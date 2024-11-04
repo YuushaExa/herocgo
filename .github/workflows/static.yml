@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true  # Cancel any in-progress deployments
 
 jobs:
-  build:
+  build_and_deploy:
     runs-on: ubuntu-latest
     
     steps:
@@ -44,14 +44,8 @@ jobs:
       with:
         path: ./public
 
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    
-    steps:
     - name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v4
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Ensure you have the token for authentication
