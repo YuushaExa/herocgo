@@ -125,7 +125,13 @@ func main() {
         fmt.Println("Error decoding config.toml:", err)
         return
     }
-
+    
+     archetypeData, err := ioutil.ReadFile(archetypePath)
+    if err != nil {
+        fmt.Println("Error reading archetype file:", err)
+        return
+    }
+    
     // If the -new flag is set, create a new post
     if *createPostFlag != "" {
         if err := createPost(*createPostFlag, archetypePath, postsDirPath, config.Params.Author); err != nil {
