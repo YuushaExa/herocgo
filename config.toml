@@ -1,0 +1,8 @@
+baseURL = "https://yuushaexa.github.io/herocgo/"
+title = "My Blog"
+theme = "default"
+languageCode = "en-us"
+
+[params]
+    author = "SSG"
+    description = "A brief description of our blog."
