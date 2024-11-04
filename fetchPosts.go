@@ -7,12 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
 	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/renderer/html"
 )
 
 type FrontMatter struct {
@@ -24,6 +23,9 @@ type FrontMatter struct {
 func main() {
 	postsDir := "./posts/"
 	publicDir := "./public/"
+	var totalPages, nonPageFiles, staticFiles int
+
+	start := time.Now()
 
 	if err := os.MkdirAll(publicDir, os.ModePerm); err != nil {
 		log.Fatalf("Failed to create public directory: %v", err)
@@ -37,8 +39,19 @@ func main() {
 	for _, file := range files {
 		if filepath.Ext(file.Name()) == ".md" {
 			processMarkdownFile(filepath.Join(postsDir, file.Name()), publicDir)
+			totalPages++
+		} else {
+			nonPageFiles++
 		}
 	}
+
+	totalBuildTime := time.Since(start)
+
+	fmt.Println("--- Build Statistics ---")
+	fmt.Printf("Total Pages: %d\n", totalPages)
+	fmt.Printf("Non-page Files: %d\n", nonPageFiles)
+	fmt.Printf("Static Files: %d\n", staticFiles) // Update if you add static files processing
+	fmt.Printf("Total Build Time: %v\n", totalBuildTime)
 }
 
 func processMarkdownFile(filePath, outputDir string) {
@@ -64,7 +77,7 @@ func processMarkdownFile(filePath, outputDir string) {
 func extractFrontMatter(content []byte) (FrontMatter, []byte) {
 	var fm FrontMatter
 	contentStr := string(content)
-	
+
 	if strings.HasPrefix(contentStr, "---") || strings.HasPrefix(contentStr, "+++") {
 		parts := strings.SplitN(contentStr, "\n---\n", 2)
 		if len(parts) < 2 {
@@ -91,10 +104,7 @@ func extractFrontMatter(content []byte) (FrontMatter, []byte) {
 }
 
 func convertMarkdownToHTML(content []byte) (string, error) {
-	md := goldmark.New(
-		goldmark.WithExtensions(extension.GFM),
-		goldmark.WithRendererOptions(html.WithHardWraps()),
-	)
+	md := goldmark.New() // Default markdown processor without additional extensions
 
 	var buf strings.Builder
 	if err := md.Convert(content, &buf); err != nil {
