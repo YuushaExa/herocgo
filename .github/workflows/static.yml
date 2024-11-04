@@ -1,6 +1,6 @@
 name: Deploy to GitHub Pages
 
-on:
+on: 
   push:
     branches: ["main"]  # Change this to your default branch if it's different
   workflow_dispatch:  # Allows manual triggering
