@@ -5,6 +5,7 @@ import (
 	"html"
 	"log"
 	"os"
+	"io" 
 	"path/filepath"
 	"strings"
 	"sync"
