@@ -39,7 +39,7 @@ func main() {
 
 	// Update theme directory path to `themes`
 	themeDir := filepath.Join("themes", config.Theme)
-	postsDir := "./posts/"
+	postsDir := "./content/"
 	publicDir := "./public/"
 
 	// Create output directory
@@ -53,10 +53,9 @@ func main() {
 	var wg sync.WaitGroup
 	start := time.Now()
 
-	// Read files in the posts directory
 	files, err := os.ReadDir(postsDir)
 	if err != nil {
-		log.Fatalf("Failed to read posts directory: %v", err)
+		log.Fatalf("Failed to read content directory: %v", err)
 	}
 
 	// Process each file concurrently
