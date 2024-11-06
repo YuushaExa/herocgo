@@ -3,14 +3,14 @@ package main
 import (
 	"fmt"
 	"html"
+	"io"          // Ensure io is imported for io.Copy
 	"log"
 	"os"
-	"io" 
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 	"text/template"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
@@ -36,7 +36,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	themeDir := filepath.Join("theme", config.Theme)
+
+	// Update theme directory path to `themes`
+	themeDir := filepath.Join("themes", config.Theme)
 	postsDir := "./posts/"
 	publicDir := "./public/"
 
