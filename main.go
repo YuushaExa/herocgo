@@ -266,35 +266,38 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 }
 
 func writeHTMLFile(filePath string, frontMatter FrontMatter, content string, themeDir string, config Config) error {
-	data := TemplateData{
-		Site:    config,
-		Page:    frontMatter,
-		Content: content,
-	}
+    data := TemplateData{
+        Site:    config,
+        Page:    frontMatter,  // Ensure this contains the correct FrontMatter data
+        Content: content,
+    }
 
-	cache, err := loadTemplates(themeDir)
-	if err != nil {
-		return fmt.Errorf("failed to load templates: %w", err)
-	}
+    // Ensure partials are loaded correctly from the cache
+    cache, err := loadTemplates(themeDir)
+    if err != nil {
+        return fmt.Errorf("failed to load templates: %w", err)
+    }
 
-	// Use the template cache here
-	tmpl, ok := cache.templates["base.html"]
-	if !ok {
-		return fmt.Errorf("base template not found")
-	}
+    tmpl, ok := cache.templates["base.html"]
+    if !ok {
+        return fmt.Errorf("base template not found")
+    }
 
-	outputFile, err := os.Create(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer outputFile.Close()
+    // Create output file
+    outputFile, err := os.Create(filePath)
+    if err != nil {
+        return fmt.Errorf("failed to create output file: %w", err)
+    }
+    defer outputFile.Close()
 
-	if err := tmpl.Execute(outputFile, data); err != nil {
-		return fmt.Errorf("failed to execute template: %w", err)
-	}
+    // Execute the template, passing the TemplateData which includes .Page.Title
+    if err := tmpl.Execute(outputFile, data); err != nil {
+        return fmt.Errorf("failed to execute template: %w", err)
+    }
 
-	return nil
+    return nil
 }
+
 
 func renderTaxonomies(cache *TemplateCache, taxonomies map[string][]string, postsByTerm map[string]map[string][]Post, publicDir string) {
 	taxonomyTemplate := cache.templates["taxonomy.html"]
