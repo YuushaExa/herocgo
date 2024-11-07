@@ -1,11 +1,6 @@
 {{ define "content" }}
     <h1>{{ .Site.Title }}</h1>
     <p>Welcome to the homepage!</p>
-{{ define "content" }}
-    <h2>Welcome to my website!</h2>
-    <p>This is the homepage.</p>
-{{ end }}
-
     <ul>
         {{ range .Pages }}
         <li><a href="{{ .Permalink }}">{{ .Title }}</a></li>
