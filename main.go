@@ -30,9 +30,9 @@ type Config struct {
 }
 
 type TemplateData struct {
-	Site  Config      // Site-wide config data (e.g., title, baseURL)
-	Page  FrontMatter // Page-specific front matter
-	Content string    // HTML content of the page
+	Site    Config      // Site-wide config data (e.g., title, baseURL)
+	Page    FrontMatter // Page-specific front matter
+	Content string      // HTML content of the page
 }
 
 type TemplateCache struct {
@@ -69,7 +69,7 @@ func main() {
 		log.Fatalf("Failed to load templates: %v", err)
 	}
 
-	// Process files
+	// Process markdown files
 	var wg sync.WaitGroup
 	files, err := os.ReadDir(postsDir)
 	if err != nil {
@@ -81,7 +81,7 @@ func main() {
 		go func(file os.DirEntry) {
 			defer wg.Done()
 			if filepath.Ext(file.Name()) == ".md" {
-				if err := processMarkdownFile(filepath.Join(postsDir, file.Name()), publicDir, themeDir, cache); err != nil {
+				if err := processMarkdownFile(filepath.Join(postsDir, file.Name()), publicDir, themeDir, config); err != nil {
 					log.Printf("Failed to process file %s: %v", file.Name(), err)
 				}
 			}
@@ -259,14 +259,14 @@ func extractFrontMatter(content []byte) (FrontMatter, []byte, error) {
 			return fm, []byte(body), nil
 		}
 	}
-	return fm, content, fmt.Errorf("no valid front matter delimiter found")
+	return fm, content, nil
 }
 
 func convertMarkdownToHTML(content []byte) (string, error) {
 	md := goldmark.New()
 	var buf strings.Builder
 	if err := md.Convert(content, &buf); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to convert markdown: %w", err)
 	}
 	return buf.String(), nil
 }
@@ -286,7 +286,7 @@ func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir stri
 
 	// Prepare the data to pass into the template
 	data := TemplateData{
-		Site:    config,       // Global site data
+		Site:    config,       // Pass the config here
 		Page:    fm,           // Front matter for the current page
 		Content: htmlContent,  // Converted HTML content
 	}
@@ -297,111 +297,40 @@ func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir stri
 	return nil
 }
 
-// Taxonomy rendering
+// Taxonomy and static file handling
 
-func renderTaxonomies(cache *TemplateCache, taxonomies map[string][]string, postsByTerm map[string]map[string][]Post, outputDir string) error {
-	for taxonomy, terms := range taxonomies {
-		// Render terms page
-		renderTermsPage(cache, taxonomy, terms, outputDir)
-
-		// Render individual term pages
-		for _, term := range terms {
-			if posts, found := postsByTerm[taxonomy][term]; found {
-				renderTaxonomyPage(cache, taxonomy, term, posts, outputDir)
-			}
-		}
-	}
-	return nil
+func renderTaxonomies(cache *TemplateCache, taxonomies map[string][]string, postsByTerm map[string]map[string][]Post, publicDir string) {
+	// Implementation for rendering taxonomies goes here
+	// Example: Create a taxonomy page based on categories or tags
 }
 
-func renderTermsPage(cache *TemplateCache, taxonomy string, terms []string, outputDir string) error {
-	termsTemplate, ok := cache.templates["taxonomy/terms"]
-	if !ok {
-		return fmt.Errorf("no terms template found for taxonomy: %s", taxonomy)
-	}
-
-	outputPath := filepath.Join(outputDir, taxonomy, "index.html")
-	if err := os.MkdirAll(filepath.Dir(outputPath), os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
-
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer file.Close()
-
-	data := struct {
-		Taxonomy string
-		Terms    []string
-	}{
-		Taxonomy: taxonomy,
-		Terms:    terms,
-	}
-
-	return termsTemplate.Execute(file, data)
-}
-
-func renderTaxonomyPage(cache *TemplateCache, taxonomy, term string, posts []Post, outputDir string) error {
-	taxonomyTemplate, ok := cache.templates[fmt.Sprintf("taxonomy/%s", taxonomy)]
-	if !ok {
-		return fmt.Errorf("no template found for taxonomy: %s", taxonomy)
-	}
-
-	outputPath := filepath.Join(outputDir, taxonomy, term, "index.html")
-	if err := os.MkdirAll(filepath.Dir(outputPath), os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
-
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer file.Close()
-
-	data := struct {
-		Taxonomy string
-		Term     string
-		Posts    []Post
-	}{
-		Taxonomy: taxonomy,
-		Term:     term,
-		Posts:    posts,
-	}
-
-	return taxonomyTemplate.Execute(file, data)
-}
-
-// Utility functions
-
-func copyStaticFiles(themeDir, publicDir string) error {
+func copyStaticFiles(themeDir, publicDir string) {
 	staticDir := filepath.Join(themeDir, "static")
-	return filepath.Walk(staticDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
+	if err := filepath.Walk(staticDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
 			return err
 		}
-		if !info.IsDir() {
-			relPath, _ := filepath.Rel(staticDir, path)
-			destPath := filepath.Join(publicDir, relPath)
-			return copyFile(path, destPath)
+
+		// Copy file to the public directory
+		destPath := filepath.Join(publicDir, filepath.Base(path))
+		inputFile, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("failed to open static file: %w", err)
 		}
+		defer inputFile.Close()
+
+		outputFile, err := os.Create(destPath)
+		if err != nil {
+			return fmt.Errorf("failed to create static file in public directory: %w", err)
+		}
+		defer outputFile.Close()
+
+		if _, err := io.Copy(outputFile, inputFile); err != nil {
+			return fmt.Errorf("failed to copy static file: %w", err)
+		}
+
 		return nil
-	})
-}
-
-func copyFile(src, dest string) error {
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
+	}); err != nil {
+		log.Printf("Error copying static files: %v", err)
 	}
-	defer sourceFile.Close()
-
-	destFile, err := os.Create(dest)
-	if err != nil {
-		return fmt.Errorf("failed to create destination file: %w", err)
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, sourceFile)
-	return err
 }
