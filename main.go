@@ -184,13 +184,12 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 }
 
 // writeHTMLFile creates an HTML file with escaped title and description to prevent XSS
-// writeHTMLFile creates an HTML file with escaped title and description to prevent XSS
 func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string) error {
     // Paths for layout and partials
-    baseTemplatePath := filepath.Join(themeDir, "layouts", "base.html")
+    baseTemplatePath := filepath.Join(themeDir, "layouts", "themes", "default", "base.html")
     partialTemplatePath := filepath.Join(themeDir, "layouts", "partials", "head.html")
 
-    // Load both the base layout and the partial template
+    // Parse the base template and partial templates together
     tmpl, err := template.New("base").ParseFiles(baseTemplatePath, partialTemplatePath)
     if err != nil {
         return fmt.Errorf("failed to load templates: %w", err)
@@ -221,6 +220,7 @@ func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir stri
 
     return nil
 }
+
 
 
 
