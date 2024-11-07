@@ -109,7 +109,11 @@ func loadConfig(path string) (Config, error) {
 }
 
 // Template handling
-
+type TemplateCache struct {
+	templates map[string]*template.Template
+	partials  *template.Template
+}
+// Function to load templates with helper functions registered
 func loadTemplates(themeDir string) (*TemplateCache, error) {
 	cache := &TemplateCache{
 		templates: make(map[string]*template.Template),
@@ -117,10 +121,17 @@ func loadTemplates(themeDir string) (*TemplateCache, error) {
 	}
 	layoutsDir := filepath.Join(themeDir, "layouts")
 
-	// Load partials, but skip if no partials are found
+	// Custom function map with helpers like partial, partialCached, and title
+	funcMap := template.FuncMap{
+		"partial":       partialFunc(themeDir),
+		"partialCached": partialCachedFunc(themeDir),
+		"title":         strings.Title,
+	}
+
+	// Load and parse partials
 	partialsGlob := filepath.Join(layoutsDir, "partials", "*.html")
 	if partialFiles, err := filepath.Glob(partialsGlob); err == nil && len(partialFiles) > 0 {
-		partials, err := template.ParseGlob(partialsGlob)
+		partials, err := template.New("partials").Funcs(funcMap).ParseGlob(partialsGlob)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse partial templates: %w", err)
 		}
@@ -129,20 +140,19 @@ func loadTemplates(themeDir string) (*TemplateCache, error) {
 		log.Printf("No partial templates found in %s, proceeding without them.", partialsGlob)
 	}
 
-	// Load other templates, skipping if specific templates are not found
+	// Load other templates
 	err := filepath.Walk(layoutsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".html") {
 			return err
 		}
 
 		templateType := inferTemplateType(path, layoutsDir)
-		tmpl, err := template.New(filepath.Base(path)).ParseFiles(path)
+		tmpl, err := template.New(filepath.Base(path)).Funcs(funcMap).ParseFiles(path)
 		if err != nil {
 			log.Printf("Skipping template %s due to parsing error: %v", path, err)
 			return nil // Continue without halting on template parse errors
 		}
 
-		// Store template in cache
 		cache.templates[templateType] = tmpl
 		return nil
 	})
@@ -153,6 +163,45 @@ func loadTemplates(themeDir string) (*TemplateCache, error) {
 	return cache, nil
 }
 
+// partialFunc returns a function to render partials
+func partialFunc(themeDir string) func(name string, data interface{}) (string, error) {
+	return func(name string, data interface{}) (string, error) {
+		var buf strings.Builder
+		partialPath := filepath.Join(themeDir, "layouts", "partials", name)
+		tmpl, err := template.ParseFiles(partialPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to load partial %s: %w", name, err)
+		}
+		if err := tmpl.Execute(&buf, data); err != nil {
+			return "", fmt.Errorf("failed to execute partial %s: %w", name, err)
+		}
+		return buf.String(), nil
+	}
+}
+
+// partialCachedFunc is similar to partialFunc, but implements caching for frequently used partials
+func partialCachedFunc(themeDir string) func(name string, data interface{}) (string, error) {
+	cache := make(map[string]*template.Template)
+	return func(name string, data interface{}) (string, error) {
+		var buf strings.Builder
+		partialPath := filepath.Join(themeDir, "layouts", "partials", name)
+
+		tmpl, ok := cache[partialPath]
+		if !ok {
+			var err error
+			tmpl, err = template.ParseFiles(partialPath)
+			if err != nil {
+				return "", fmt.Errorf("failed to load cached partial %s: %w", name, err)
+			}
+			cache[partialPath] = tmpl
+		}
+
+		if err := tmpl.Execute(&buf, data); err != nil {
+			return "", fmt.Errorf("failed to execute cached partial %s: %w", name, err)
+		}
+		return buf.String(), nil
+	}
+}
 
 func inferTemplateType(path, layoutsDir string) string {
 	relPath, _ := filepath.Rel(layoutsDir, path)
