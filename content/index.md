@@ -1,6 +1,6 @@
 ---
-title: "TestingTitles"
-dat: "date-name"
+titl: "TestingTitles"
+date: "date-name"
 author: "author-name"
 ---
 
