@@ -2,6 +2,7 @@ baseURL = "https://yuushaexa.github.io/herocgo/"
 title = "My Blog"
 theme = "default"
 languageCode = "en-us"
+description = "A simple static site generator example"
 
 [params]
     author = "SSG"
