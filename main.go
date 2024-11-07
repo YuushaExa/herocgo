@@ -184,34 +184,46 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 }
 
 // writeHTMLFile creates an HTML file with escaped title and description to prevent XSS
+// writeHTMLFile creates an HTML file with escaped title and description to prevent XSS
 func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string) error {
-	tmplPath := filepath.Join(themeDir, "layouts", "base.html")
-	tmpl, err := template.ParseFiles(tmplPath)
-	if err != nil {
-		return fmt.Errorf("failed to load layout: %w", err)
-	}
+    tmplPath := filepath.Join(themeDir, "layouts", "base.html")
+    partialsPath := filepath.Join(themeDir, "layouts", "partials", "head.html")
 
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create HTML file: %w", err)
-	}
-	defer file.Close()
+    // Parse the main layout template and the head partial
+    tmpl, err := template.New("base").ParseFiles(tmplPath)
+    if err != nil {
+        return fmt.Errorf("failed to load layout: %w", err)
+    }
 
-	data := struct {
-		Title       string
-		Description string
-		Content     string
-	}{
-		Title:       html.EscapeString(fm.Title),
-		Description: html.EscapeString(fm.Description),
-		Content:     htmlContent,
-	}
+    // Parse the partials after the base layout is parsed
+    tmpl, err = tmpl.ParseFiles(partialsPath)
+    if err != nil {
+        return fmt.Errorf("failed to parse partials: %w", err)
+    }
 
-	if err := tmpl.Execute(file, data); err != nil {
-		return fmt.Errorf("failed to execute template: %w", err)
-	}
-	return nil
+    file, err := os.Create(outputPath)
+    if err != nil {
+        return fmt.Errorf("failed to create HTML file: %w", err)
+    }
+    defer file.Close()
+
+    data := struct {
+        Title       string
+        Description string
+        Content     string
+    }{
+        Title:       html.EscapeString(fm.Title),
+        Description: html.EscapeString(fm.Description),
+        Content:     htmlContent,
+    }
+
+    // Execute the template and write it to the file
+    if err := tmpl.Execute(file, data); err != nil {
+        return fmt.Errorf("failed to execute template: %w", err)
+    }
+    return nil
 }
+
 
 // copyStaticFiles copies static files from the theme directory to the public directory
 func copyStaticFiles(themeDir, publicDir string) error {
