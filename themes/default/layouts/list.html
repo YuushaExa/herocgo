@@ -1,0 +1,8 @@
+{{ define "content" }}
+    <h1>List of Pages</h1>
+    <ul>
+        {{ range .Pages }}
+        <li><a href="{{ .Permalink }}">{{ .Title }}</a></li>
+        {{ end }}
+    </ul>
+{{ end }}
