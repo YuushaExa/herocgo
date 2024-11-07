@@ -13,7 +13,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
-	"github.com/yuin/goldmark
+	"github.com/yuin/goldmark"
 )
 
 // Structs for front matter, configuration, and template caching
