@@ -30,6 +30,12 @@ type Config struct {
 	Theme   string `toml:"theme"`
 }
 
+type TemplateData struct {
+	Site  Config      // Site-wide config data (e.g., title, baseURL)
+	Page  FrontMatter // Page-specific front matter
+	Content string    // HTML content of the page
+}
+
 type TemplateCache struct {
 	templates map[string]*template.Template
 	partials  *template.Template
@@ -260,10 +266,11 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 	return buf.String(), nil
 }
 
-func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent string, cache *TemplateCache) error {
-	tmpl, ok := cache.templates["base"]
-	if !ok {
-		return fmt.Errorf("base template not found")
+func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string, config Config) error {
+	tmplPath := filepath.Join(themeDir, "layouts", "base.html")
+	tmpl, err := template.ParseFiles(tmplPath)
+	if err != nil {
+		return fmt.Errorf("failed to load template: %w", err)
 	}
 
 	file, err := os.Create(outputPath)
@@ -272,17 +279,17 @@ func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent string, cache 
 	}
 	defer file.Close()
 
-	data := struct {
-		Title       string
-		Description string
-		Content     string
-	}{
-		Title:       html.EscapeString(fm.Title),
-		Description: html.EscapeString(fm.Description),
-		Content:     htmlContent,
+	// Prepare the data to pass into the template
+	data := TemplateData{
+		Site:    config,       // Global site data
+		Page:    fm,           // Front matter for the current page
+		Content: htmlContent,  // Converted HTML content
 	}
 
-	return tmpl.Execute(file, data)
+	if err := tmpl.Execute(file, data); err != nil {
+		return fmt.Errorf("failed to execute template: %w", err)
+	}
+	return nil
 }
 
 // Taxonomy rendering
