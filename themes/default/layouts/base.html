@@ -1,26 +1,14 @@
+<!-- templates/base.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ .Page.Title }}</title>
-    <meta name="description" content="{{ .Page.Description }}">
+    <title>{{ .Title }}</title>
+    <meta name="description" content="{{ .Description }}">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-
-<header>
-    <h1>{{ .Site.Title }}</h1>
-    <nav><!-- Navigation links here --></nav>
-</header>
-
-<main>
-    <h2>{{ .Page.Title }}</h2>
-    <div>{{ .Content }}</div>
-</main>
-
-<footer>
-    <p>© {{ .Site.Title }}</p>
-</footer>
-
+    {{ .Content }}
 </body>
 </html>
