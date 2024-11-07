@@ -116,6 +116,7 @@ func loadConfig(path string) (Config, error) {
 // Template handling
 
 // Function to load templates with helper functions registered
+// Function to load templates with helper functions registered
 func loadTemplates(themeDir string) (*TemplateCache, error) {
 	cache := &TemplateCache{
 		templates: make(map[string]*template.Template),
@@ -142,7 +143,7 @@ func loadTemplates(themeDir string) (*TemplateCache, error) {
 		log.Printf("No partial templates found in %s, proceeding without them.", partialsGlob)
 	}
 
-	// Load other templates
+	// Load other templates (e.g., base.html)
 	err := filepath.Walk(layoutsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".html") {
 			return err
@@ -155,6 +156,7 @@ func loadTemplates(themeDir string) (*TemplateCache, error) {
 			return nil // Continue without halting on template parse errors
 		}
 
+		// Register the template
 		cache.templates[templateType] = tmpl
 		return nil
 	})
@@ -164,6 +166,7 @@ func loadTemplates(themeDir string) (*TemplateCache, error) {
 
 	return cache, nil
 }
+
 
 // partialFunc returns a function to render partials
 func partialFunc(themeDir string) func(name string, data interface{}) (string, error) {
