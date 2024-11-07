@@ -1,14 +1,19 @@
-<!-- templates/base.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ .Title }}</title>
-    <meta name="description" content="{{ .Description }}">
-    <link rel="stylesheet" href="/static/style.css">
+    {{ template "partials/head.html" . }}
 </head>
 <body>
-    {{ .Content }}
+    <header>
+        <h1>{{ .Title }}</h1>
+    </header>
+    
+    <div class="content">
+        {{ .Content }}
+    </div>
+
+    <footer>
+        <p>Site built with Go SSG</p>
+    </footer>
 </body>
 </html>
