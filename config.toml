@@ -1,6 +1,6 @@
 baseURL = "https://yuushaexa.github.io/herocgo/"
 title = "My Blog"
-theme = "default1"
+theme = "default"
 languageCode = "en-us"
 
 [params]
