@@ -123,42 +123,42 @@ func loadTemplates(themeDir string) (*TemplateCache, error) {
     }
     layoutsDir := filepath.Join(themeDir, "layouts")
 
-    // Custom function map with helpers like partial, partialCached, and title
+    // Define funcMap with custom functions like partial and title
     funcMap := template.FuncMap{
         "partial":       partialFunc(themeDir),
         "partialCached": partialCachedFunc(themeDir),
         "title":         strings.Title,
     }
 
-    // Load and parse partials
+    // Load and parse partial templates with funcMap applied
     partialsGlob := filepath.Join(layoutsDir, "partials", "*.html")
-    if partialFiles, err := filepath.Glob(partialsGlob); err == nil && len(partialFiles) > 0 {
+    partialFiles, err := filepath.Glob(partialsGlob)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read partials: %w", err)
+    }
+    if len(partialFiles) > 0 {
         partials, err := template.New("partials").Funcs(funcMap).ParseGlob(partialsGlob)
         if err != nil {
             return nil, fmt.Errorf("failed to parse partial templates: %w", err)
         }
         cache.partials = partials
-    } else {
-        log.Printf("No partial templates found in %s, proceeding without them.", partialsGlob)
     }
 
-    // Load other templates (e.g., base.html) with funcMap applied
-    err := filepath.Walk(layoutsDir, func(path string, info os.FileInfo, err error) error {
+    // Load other templates (e.g., base.html, header.html) and apply funcMap globally
+    err = filepath.Walk(layoutsDir, func(path string, info os.FileInfo, err error) error {
         if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".html") {
             return err
         }
-
-        templateType := inferTemplateType(path, layoutsDir)
 
         // Apply the funcMap to each template
         tmpl, err := template.New(filepath.Base(path)).Funcs(funcMap).ParseFiles(path)
         if err != nil {
             log.Printf("Skipping template %s due to parsing error: %v", path, err)
-            return nil // Continue without halting on template parse errors
+            return nil
         }
 
-        // Register the template
-        cache.templates[templateType] = tmpl
+        // Register the template in the cache
+        cache.templates[filepath.Base(path)] = tmpl
         return nil
     })
     if err != nil {
@@ -168,14 +168,12 @@ func loadTemplates(themeDir string) (*TemplateCache, error) {
     return cache, nil
 }
 
-
-
-
 // partialFunc returns a function to render partials
 func partialFunc(themeDir string) func(name string, data interface{}) (string, error) {
 	return func(name string, data interface{}) (string, error) {
 		var buf strings.Builder
 		partialPath := filepath.Join(themeDir, "layouts", "partials", name)
+		log.Printf("Loading partial: %s", partialPath) // Debug log
 		tmpl, err := template.ParseFiles(partialPath)
 		if err != nil {
 			return "", fmt.Errorf("failed to load partial %s: %w", name, err)
@@ -211,14 +209,6 @@ func partialCachedFunc(themeDir string) func(name string, data interface{}) (str
 	}
 }
 
-func inferTemplateType(path, layoutsDir string) string {
-	relPath, _ := filepath.Rel(layoutsDir, path)
-	if strings.HasPrefix(relPath, "taxonomy/") {
-		return relPath
-	}
-	return strings.TrimSuffix(filepath.Base(path), ".html")
-}
-
 // Content processing
 
 func processMarkdownFile(filePath, outputDir, themeDir string, config Config) error {
@@ -249,7 +239,6 @@ func processMarkdownFile(filePath, outputDir, themeDir string, config Config) er
 	return nil
 }
 
-
 func extractFrontMatter(content []byte) (FrontMatter, []byte, error) {
 	var fm FrontMatter
 	contentStr := string(content)
@@ -272,71 +261,113 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 	md := goldmark.New()
 	var buf strings.Builder
 	if err := md.Convert(content, &buf); err != nil {
-		return "", fmt.Errorf("failed to convert markdown: %w", err)
+		return "", fmt.Errorf("failed to convert markdown to HTML: %w", err)
 	}
 	return buf.String(), nil
 }
 
-func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string, config Config) error {
-	tmplPath := filepath.Join(themeDir, "layouts", "base.html")
-	tmpl, err := template.ParseFiles(tmplPath)
-	if err != nil {
-		return fmt.Errorf("failed to load template: %w", err)
-	}
-
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create HTML file: %w", err)
-	}
-	defer file.Close()
-
-	// Prepare the data to pass into the template
+func writeHTMLFile(filePath string, frontMatter FrontMatter, content string, themeDir string, config Config) error {
+	// Create template data with the content and front matter
 	data := TemplateData{
-		Site:    config,       // Pass the config here
-		Page:    fm,           // Front matter for the current page
-		Content: htmlContent,  // Converted HTML content
+		Site:    config,
+		Page:    frontMatter,
+		Content: content,
 	}
 
-	if err := tmpl.Execute(file, data); err != nil {
+	// Load the base template and render it
+	tmpl, ok := templateCache.templates["base.html"]
+	if !ok {
+		return fmt.Errorf("base template not found")
+	}
+
+	// Execute the template and write it to the output file
+	outputFile, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outputFile.Close()
+
+	if err := tmpl.Execute(outputFile, data); err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)
 	}
+
 	return nil
 }
 
-// Taxonomy and static file handling
-
 func renderTaxonomies(cache *TemplateCache, taxonomies map[string][]string, postsByTerm map[string]map[string][]Post, publicDir string) {
-	// Implementation for rendering taxonomies goes here
-	// Example: Create a taxonomy page based on categories or tags
+	// Rendering taxonomies (e.g., tags, categories)
+	taxonomyTemplate := cache.templates["taxonomy.html"]
+	if taxonomyTemplate == nil {
+		log.Println("Warning: Taxonomy template not found.")
+		return
+	}
+
+	// Generate and render taxonomy pages
+	for termType, terms := range taxonomies {
+		for _, term := range terms {
+			// Create a taxonomy data structure
+			data := map[string]interface{}{
+				"TermType": termType,
+				"Term":     term,
+				"Posts":    postsByTerm[termType][term],
+			}
+
+			// Render the taxonomy page for each term
+			outputPath := filepath.Join(publicDir, termType, term+".html")
+			outputFile, err := os.Create(outputPath)
+			if err != nil {
+				log.Printf("Failed to create taxonomy page %s: %v", outputPath, err)
+				continue
+			}
+			defer outputFile.Close()
+
+			if err := taxonomyTemplate.Execute(outputFile, data); err != nil {
+				log.Printf("Failed to render taxonomy page %s: %v", outputPath, err)
+			}
+		}
+	}
 }
 
 func copyStaticFiles(themeDir, publicDir string) {
+	// Copy static files (e.g., images, CSS, JavaScript)
 	staticDir := filepath.Join(themeDir, "static")
-	if err := filepath.Walk(staticDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+	err := filepath.Walk(staticDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		// Copy file to public directory
+		relativePath := strings.TrimPrefix(path, staticDir)
+		destPath := filepath.Join(publicDir, relativePath)
+		destDir := filepath.Dir(destPath)
+
+		// Create destination directory if it does not exist
+		if err := os.MkdirAll(destDir, os.ModePerm); err != nil {
 			return err
 		}
 
-		// Copy file to the public directory
-		destPath := filepath.Join(publicDir, filepath.Base(path))
-		inputFile, err := os.Open(path)
+		// Copy the file
+		sourceFile, err := os.Open(path)
 		if err != nil {
-			return fmt.Errorf("failed to open static file: %w", err)
+			return err
 		}
-		defer inputFile.Close()
+		defer sourceFile.Close()
 
-		outputFile, err := os.Create(destPath)
+		destFile, err := os.Create(destPath)
 		if err != nil {
-			return fmt.Errorf("failed to create static file in public directory: %w", err)
+			return err
 		}
-		defer outputFile.Close()
+		defer destFile.Close()
 
-		if _, err := io.Copy(outputFile, inputFile); err != nil {
-			return fmt.Errorf("failed to copy static file: %w", err)
+		if _, err := io.Copy(destFile, sourceFile); err != nil {
+			return err
 		}
-
 		return nil
-	}); err != nil {
-		log.Printf("Error copying static files: %v", err)
+	})
+	if err != nil {
+		log.Printf("Failed to copy static files: %v", err)
 	}
 }
