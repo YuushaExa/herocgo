@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"io"
+	"html"
+	"io"          // Ensure io is imported for io.Copy
 	"log"
 	"os"
 	"path/filepath"
@@ -16,7 +17,7 @@ import (
 	"github.com/yuin/goldmark"
 )
 
-// Structs for front matter, configuration, and template caching
+// Structs for front matter and configuration
 type FrontMatter struct {
 	Title       string `yaml:"title" toml:"title"`
 	Description string `yaml:"description" toml:"description"`
@@ -29,32 +30,19 @@ type Config struct {
 	Theme   string `toml:"theme"`
 }
 
-type TemplateData struct {
-	Site    Config      // Site-wide config data (e.g., title, baseURL)
-	Page    FrontMatter // Page-specific front matter
-	Content string      // HTML content of the page
-}
-
-type TemplateCache struct {
-	templates map[string]*template.Template
-	partials  *template.Template
-}
-
-type Post struct {
-	Title       string
-	Description string
-	Date        time.Time
-	Content     string
-}
-
-// Main entry point
 func main() {
+	// Load configuration
 	config, err := loadConfig("config.toml")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Validate configuration
 	themeDir := filepath.Join("themes", config.Theme)
+	if _, err := os.Stat(themeDir); os.IsNotExist(err) {
+		log.Fatalf("Theme directory does not exist: %s", themeDir)
+	}
+
 	postsDir := "./content/"
 	publicDir := "./public/"
 
@@ -63,45 +51,54 @@ func main() {
 		log.Fatalf("Failed to create public directory: %v", err)
 	}
 
-	// Load templates
-	cache, err := loadTemplates(themeDir)
-	if err != nil {
-		log.Fatalf("Failed to load templates: %v", err)
-	}
-
-	// Process all files in the content directory, including subdirectories
+	// Prepare build statistics
+	var totalPages, nonPageFiles int
+	var mu sync.Mutex
 	var wg sync.WaitGroup
-	err = filepath.Walk(postsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			log.Printf("Error walking through content directory: %v", err)
-			return err
-		}
+	start := time.Now()
 
-		// Process only markdown files
-		if !info.IsDir() && filepath.Ext(path) == ".md" {
-			wg.Add(1)
-			go func(filePath string) {
-				defer wg.Done()
-				if err := processMarkdownFile(filePath, publicDir, themeDir, config, cache); err != nil {
-					log.Printf("Failed to process file %s: %v", filePath, err)
-				}
-			}(path)
-		}
-		return nil
-	})
-
+	files, err := os.ReadDir(postsDir)
 	if err != nil {
-		log.Fatalf("Error walking the content directory: %v", err)
+		log.Fatalf("Failed to read content directory: %v", err)
 	}
 
-	// Wait for all processing to complete
+	// Process each file concurrently
+	for _, file := range files {
+		wg.Add(1)
+		go func(file os.DirEntry) {
+			defer wg.Done()
+			if filepath.Ext(file.Name()) == ".md" {
+				if err := processMarkdownFile(filepath.Join(postsDir, file.Name()), publicDir, themeDir); err != nil {
+					log.Printf("Failed to process file %s: %v", file.Name(), err)
+				} else {
+					mu.Lock()
+					totalPages++
+					mu.Unlock()
+				}
+			} else {
+				mu.Lock()
+				nonPageFiles++
+				mu.Unlock()
+			}
+		}(file)
+	}
+
+	// Wait for all goroutines to finish
 	wg.Wait()
 
-	// Copy static files (e.g., CSS, JS, images)
-	copyStaticFiles(themeDir, publicDir)
+	// Copy theme static files to public directory
+	if err := copyStaticFiles(themeDir, publicDir); err != nil {
+		log.Printf("Failed to copy static files: %v", err)
+	}
+
+	// Print build statistics
+	fmt.Println("--- Build Statistics ---")
+	fmt.Printf("Total Pages: %d\n", totalPages)
+	fmt.Printf("Non-page Files: %d\n", nonPageFiles)
+	fmt.Printf("Total Build Time: %v\n", time.Since(start))
 }
 
-// loadConfig reads the configuration file
+// loadConfig reads and parses the configuration file
 func loadConfig(path string) (Config, error) {
 	var config Config
 	data, err := os.ReadFile(path)
@@ -114,89 +111,8 @@ func loadConfig(path string) (Config, error) {
 	return config, nil
 }
 
-// Template handling
-
-// Function to load templates with helper functions registered
-func loadTemplates(themeDir string) (*TemplateCache, error) {
-	cache := &TemplateCache{
-		templates: make(map[string]*template.Template),
-		partials:  new(template.Template),
-	}
-	layoutsDir := filepath.Join(themeDir, "layouts")
-
-	// Custom function map with helpers like partial
-	funcMap := template.FuncMap{
-		"partial": partialFunc(themeDir),
-		"title":   strings.Title,
-	}
-
-	// Load and parse partials
-	partialsGlob := filepath.Join(layoutsDir, "partials", "*.html")
-	if partialFiles, err := filepath.Glob(partialsGlob); err == nil && len(partialFiles) > 0 {
-		partials, err := template.New("partials").Funcs(funcMap).ParseGlob(partialsGlob)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse partial templates: %w", err)
-		}
-		cache.partials = partials
-	} else {
-		log.Printf("No partial templates found in %s, proceeding without them.", partialsGlob)
-	}
-
-	// Load other templates (e.g., base.html) with funcMap applied
-	err := filepath.Walk(layoutsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".html") {
-			return err
-		}
-
-		templateType := inferTemplateType(path, layoutsDir)
-
-		// Apply the funcMap to each template
-		tmpl, err := template.New(filepath.Base(path)).Funcs(funcMap).ParseFiles(path)
-		if err != nil {
-			log.Printf("Skipping template %s due to parsing error: %v", path, err)
-			return nil // Continue without halting on template parse errors
-		}
-
-		// Register the template
-		cache.templates[templateType] = tmpl
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to load templates: %w", err)
-	}
-
-	return cache, nil
-}
-
-// partialFunc returns a function to render partials
-func partialFunc(themeDir string) func(name string, data interface{}) (string, error) {
-	return func(name string, data interface{}) (string, error) {
-		var buf strings.Builder
-		partialPath := filepath.Join(themeDir, "layouts", "partials", name)
-		tmpl, err := template.ParseFiles(partialPath)
-		if err != nil {
-			return "", fmt.Errorf("failed to load partial %s: %w", name, err)
-		}
-		if err := tmpl.Execute(&buf, data); err != nil {
-			return "", fmt.Errorf("failed to execute partial %s: %w", name, err)
-		}
-		return buf.String(), nil
-	}
-}
-
-// inferTemplateType infers template type from its path
-func inferTemplateType(path, layoutsDir string) string {
-	relPath, _ := filepath.Rel(layoutsDir, path)
-	if strings.HasPrefix(relPath, "taxonomy/") {
-		return relPath
-	}
-	return strings.TrimSuffix(filepath.Base(path), ".html")
-}
-
-// Content processing
-
-// processMarkdownFile processes a single markdown file and writes it to the public directory
-func processMarkdownFile(filePath, outputDir, themeDir string, config Config, cache *TemplateCache) error {
+// processMarkdownFile reads a Markdown file, parses front matter, converts content, and writes an HTML file
+func processMarkdownFile(filePath, outputDir, themeDir string) error {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
@@ -205,6 +121,7 @@ func processMarkdownFile(filePath, outputDir, themeDir string, config Config, ca
 	frontMatter, markdownContent, err := extractFrontMatter(content)
 	if err != nil {
 		log.Printf("Warning: Malformed front matter in %s: %v", filePath, err)
+		// Set front matter to default values if parsing fails
 		frontMatter = FrontMatter{}
 	}
 
@@ -213,78 +130,122 @@ func processMarkdownFile(filePath, outputDir, themeDir string, config Config, ca
 		return fmt.Errorf("failed to convert Markdown: %w", err)
 	}
 
-	// Determine the output path based on the folder structure
-	relPath, _ := filepath.Rel("./content", filePath)
-	relPath = strings.TrimSuffix(relPath, filepath.Ext(relPath)) + ".html"
-	outputPath := filepath.Join(outputDir, relPath)
+		outputFileName := filepath.Base(filePath[:len(filePath)-len(filepath.Ext(filePath))]) + ".html"
+	outputPath := filepath.Join(outputDir, outputFileName)
 
-	// Create directories in the output path if needed
-	if err := os.MkdirAll(filepath.Dir(outputPath), os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create directories: %w", err)
-	}
-
-	// Render the HTML using the base template and write the output
-	if err := writeHTMLFile(outputPath, frontMatter, htmlContent, themeDir, config, cache); err != nil {
+	if err := writeHTMLFile(outputPath, frontMatter, htmlContent, themeDir); err != nil {
 		return fmt.Errorf("failed to write HTML file: %w", err)
 	}
 
 	return nil
 }
 
-// extractFrontMatter extracts YAML front matter from markdown content
+// extractFrontMatter separates the front matter from the Markdown content
 func extractFrontMatter(content []byte) (FrontMatter, []byte, error) {
 	var fm FrontMatter
 	contentStr := string(content)
 
-	if strings.HasPrefix(contentStr, "---") {
-		parts := strings.SplitN(contentStr, "\n---\n", 2)
+	if strings.HasPrefix(contentStr, "---") || strings.HasPrefix(contentStr, "+++") {
+		var parts []string
+		if strings.HasPrefix(contentStr, "---") {
+			parts = strings.SplitN(contentStr, "\n---\n", 2)
+		} else {
+			parts = strings.SplitN(contentStr, "\n+++\n", 2)
+		}
+
 		if len(parts) == 2 {
 			meta := strings.Trim(parts[0], "-+ \n")
 			body := parts[1]
-			if err := yaml.Unmarshal([]byte(meta), &fm); err != nil {
-				return fm, nil, fmt.Errorf("failed to parse front matter: %w", err)
+
+			if strings.HasPrefix(contentStr, "---") {
+				if err := yaml.Unmarshal([]byte(meta), &fm); err != nil {
+					return fm, []byte(body), fmt.Errorf("failed to parse YAML front matter: %w", err)
+				}
+			} else {
+				if err := toml.Unmarshal([]byte(meta), &fm); err != nil {
+					return fm, []byte(body), fmt.Errorf("failed to parse TOML front matter: %w", err)
+				}
 			}
 			return fm, []byte(body), nil
 		}
+		return fm, content, fmt.Errorf("no valid front matter delimiter found")
 	}
 	return fm, content, nil
 }
 
-// convertMarkdownToHTML converts markdown content to HTML
+// convertMarkdownToHTML converts Markdown to HTML using goldmark
 func convertMarkdownToHTML(content []byte) (string, error) {
 	md := goldmark.New()
 	var buf strings.Builder
 	if err := md.Convert(content, &buf); err != nil {
-		return "", fmt.Errorf("failed to convert markdown to HTML: %w", err)
+		return "", err
 	}
 	return buf.String(), nil
 }
 
-// writeHTMLFile writes the rendered HTML to a file
-func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string, config Config, cache *TemplateCache) error {
-	tmpl, exists := cache.templates["base"]
-	if !exists {
-		return fmt.Errorf("failed to find base template")
-	}
-
-	// Prepare data for template rendering
-	data := TemplateData{
-		Site:    config,
-		Page:    fm,
-		Content: htmlContent,
-	}
-
-	// Create file
-	outputFile, err := os.Create(outputPath)
+// writeHTMLFile creates an HTML file with escaped title and description to prevent XSS
+func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string) error {
+	tmplPath := filepath.Join(themeDir, "templates", "base.html")
+	tmpl, err := template.ParseFiles(tmplPath)
 	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
+		return fmt.Errorf("failed to load template: %w", err)
 	}
-	defer outputFile.Close()
 
-	// Execute template and write to file
-	if err := tmpl.Execute(outputFile, data); err != nil {
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create HTML file: %w", err)
+	}
+	defer file.Close()
+
+	data := struct {
+		Title       string
+		Description string
+		Content     string
+	}{
+		Title:       html.EscapeString(fm.Title),
+		Description: html.EscapeString(fm.Description),
+		Content:     htmlContent,
+	}
+
+	if err := tmpl.Execute(file, data); err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)
 	}
-
 	return nil
+}
+
+// copyStaticFiles copies static files from the theme directory to the public directory
+func copyStaticFiles(themeDir, publicDir string) error {
+	staticDir := filepath.Join(themeDir, "static")
+	return filepath.Walk(staticDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			dest := filepath.Join(publicDir, strings.TrimPrefix(path, staticDir))
+			if err := os.MkdirAll(filepath.Dir(dest), os.ModePerm); err != nil {
+				return err
+			}
+			if _, err := copyFile(path, dest); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// copyFile is a helper to copy files from source to destination
+func copyFile(src, dest string) (int64, error) {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return 0, err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dest)
+	if err != nil {
+		return 0, err
+	}
+	defer destFile.Close()
+
+	return io.Copy(destFile, sourceFile)
 }
