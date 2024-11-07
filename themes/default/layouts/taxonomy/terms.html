@@ -1,0 +1,8 @@
+{{ define "content" }}
+    <h1>All {{ .Taxonomy | title }}</h1>
+    <ul>
+        {{ range .Terms }}
+        <li><a href="{{ .Permalink }}">{{ .Name }}</a> ({{ .Count }})</li>
+        {{ end }}
+    </ul>
+{{ end }}
