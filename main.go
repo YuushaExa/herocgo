@@ -185,44 +185,33 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 
 // writeHTMLFile creates an HTML file with escaped title and description to prevent XSS
 func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string) error {
-    // Paths for layout and partials
-    baseTemplatePath := filepath.Join(themeDir, "layouts", "themes", "default", "base.html")
-    partialTemplatePath := filepath.Join(themeDir, "layouts", "partials", "head.html")
+	tmplPath := filepath.Join(themeDir, "templates", "base.html")
+	tmpl, err := template.ParseFiles(tmplPath)
+	if err != nil {
+		return fmt.Errorf("failed to load template: %w", err)
+	}
 
-    // Parse the base template and partial templates together
-    tmpl, err := template.New("base").ParseFiles(baseTemplatePath, partialTemplatePath)
-    if err != nil {
-        return fmt.Errorf("failed to load templates: %w", err)
-    }
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create HTML file: %w", err)
+	}
+	defer file.Close()
 
-    // Create the output HTML file
-    file, err := os.Create(outputPath)
-    if err != nil {
-        return fmt.Errorf("failed to create HTML file: %w", err)
-    }
-    defer file.Close()
+	data := struct {
+		Title       string
+		Description string
+		Content     string
+	}{
+		Title:       html.EscapeString(fm.Title),
+		Description: html.EscapeString(fm.Description),
+		Content:     htmlContent,
+	}
 
-    // Define the data structure to pass into the template
-    data := struct {
-        Title       string
-        Description string
-        Content     string
-    }{
-        Title:       html.EscapeString(fm.Title),
-        Description: html.EscapeString(fm.Description),
-        Content:     htmlContent,
-    }
-
-    // Execute the base template with the provided data
-    if err := tmpl.ExecuteTemplate(file, "base", data); err != nil {
-        return fmt.Errorf("failed to execute template: %w", err)
-    }
-
-    return nil
+	if err := tmpl.Execute(file, data); err != nil {
+		return fmt.Errorf("failed to execute template: %w", err)
+	}
+	return nil
 }
-
-
-
 
 // copyStaticFiles copies static files from the theme directory to the public directory
 func copyStaticFiles(themeDir, publicDir string) error {
