@@ -1,0 +1,9 @@
+{{ define "content" }}
+    <h1>{{ .Term | title }}</h1>
+    <p>Posts under {{ .Term | title }}:</p>
+    <ul>
+        {{ range .Posts }}
+        <li><a href="{{ .Permalink }}">{{ .Title }}</a></li>
+        {{ end }}
+    </ul>
+{{ end }}
