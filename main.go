@@ -185,10 +185,10 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 
 // writeHTMLFile creates an HTML file with escaped title and description to prevent XSS
 func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string) error {
-	tmplPath := filepath.Join(themeDir, "templates", "base.html")
+	tmplPath := filepath.Join(themeDir, "layouts", "base.html")
 	tmpl, err := template.ParseFiles(tmplPath)
 	if err != nil {
-		return fmt.Errorf("failed to load template: %w", err)
+		return fmt.Errorf("failed to load layout: %w", err)
 	}
 
 	file, err := os.Create(outputPath)
