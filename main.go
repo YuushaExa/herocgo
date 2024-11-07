@@ -117,16 +117,20 @@ func loadTemplates(themeDir string) (*TemplateCache, error) {
 	}
 	layoutsDir := filepath.Join(themeDir, "layouts")
 
-	// Load partials
+	// Load partials, but skip if no partials are found
 	partialsGlob := filepath.Join(layoutsDir, "partials", "*.html")
-	partials, err := template.ParseGlob(partialsGlob)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("failed to parse partial templates: %w", err)
+	if partialFiles, err := filepath.Glob(partialsGlob); err == nil && len(partialFiles) > 0 {
+		partials, err := template.ParseGlob(partialsGlob)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse partial templates: %w", err)
+		}
+		cache.partials = partials
+	} else {
+		log.Printf("No partial templates found in %s, proceeding without them.", partialsGlob)
 	}
-	cache.partials = partials
 
-	// Load templates
-	err = filepath.Walk(layoutsDir, func(path string, info os.FileInfo, err error) error {
+	// Load other templates, skipping if specific templates are not found
+	err := filepath.Walk(layoutsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".html") {
 			return err
 		}
@@ -134,17 +138,12 @@ func loadTemplates(themeDir string) (*TemplateCache, error) {
 		templateType := inferTemplateType(path, layoutsDir)
 		tmpl, err := template.New(filepath.Base(path)).ParseFiles(path)
 		if err != nil {
-			return fmt.Errorf("failed to parse template %s: %w", path, err)
+			log.Printf("Skipping template %s due to parsing error: %v", path, err)
+			return nil // Continue without halting on template parse errors
 		}
 
-		// Categorize templates for taxonomy and terms
-		if strings.Contains(path, "taxonomy/terms.html") {
-			cache.templates["taxonomy/terms"] = tmpl
-		} else if strings.Contains(path, "taxonomy") {
-			cache.templates[templateType] = tmpl
-		} else {
-			cache.templates[templateType] = tmpl
-		}
+		// Store template in cache
+		cache.templates[templateType] = tmpl
 		return nil
 	})
 	if err != nil {
@@ -153,6 +152,7 @@ func loadTemplates(themeDir string) (*TemplateCache, error) {
 
 	return cache, nil
 }
+
 
 func inferTemplateType(path, layoutsDir string) string {
 	relPath, _ := filepath.Rel(layoutsDir, path)
