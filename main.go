@@ -109,10 +109,7 @@ func loadConfig(path string) (Config, error) {
 }
 
 // Template handling
-type TemplateCache struct {
-	templates map[string]*template.Template
-	partials  *template.Template
-}
+
 // Function to load templates with helper functions registered
 func loadTemplates(themeDir string) (*TemplateCache, error) {
 	cache := &TemplateCache{
