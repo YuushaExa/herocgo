@@ -184,29 +184,31 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 }
 
 // writeHTMLFile creates an HTML file with escaped title and description to prevent XSS
-// writeHTMLFile creates an HTML file with escaped title and description to prevent XSS
 func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string) error {
+    // Define the paths for the layout and the partial
     tmplPath := filepath.Join(themeDir, "layouts", "base.html")
     partialsPath := filepath.Join(themeDir, "layouts", "partials", "head.html")
 
-    // Parse the main layout template and the head partial
+    // Parse the base template and the head partial
     tmpl, err := template.New("base").ParseFiles(tmplPath)
     if err != nil {
         return fmt.Errorf("failed to load layout: %w", err)
     }
 
-    // Parse the partials after the base layout is parsed
+    // Parse the head partial into the template
     tmpl, err = tmpl.ParseFiles(partialsPath)
     if err != nil {
         return fmt.Errorf("failed to parse partials: %w", err)
     }
 
+    // Create the output HTML file
     file, err := os.Create(outputPath)
     if err != nil {
         return fmt.Errorf("failed to create HTML file: %w", err)
     }
     defer file.Close()
 
+    // Define the data structure to pass into the template
     data := struct {
         Title       string
         Description string
@@ -217,12 +219,14 @@ func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir stri
         Content:     htmlContent,
     }
 
-    // Execute the template and write it to the file
+    // Execute the template and write the content to the file
     if err := tmpl.Execute(file, data); err != nil {
         return fmt.Errorf("failed to execute template: %w", err)
     }
+
     return nil
 }
+
 
 
 // copyStaticFiles copies static files from the theme directory to the public directory
