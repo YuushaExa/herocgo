@@ -37,8 +37,12 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Update theme directory path to `themes`
+	// Validate configuration
 	themeDir := filepath.Join("themes", config.Theme)
+	if _, err := os.Stat(themeDir); os.IsNotExist(err) {
+		log.Fatalf("Theme directory does not exist: %s", themeDir)
+	}
+
 	postsDir := "./content/"
 	publicDir := "./public/"
 
@@ -117,6 +121,8 @@ func processMarkdownFile(filePath, outputDir, themeDir string) error {
 	frontMatter, markdownContent, err := extractFrontMatter(content)
 	if err != nil {
 		log.Printf("Warning: Malformed front matter in %s: %v", filePath, err)
+		// Set front matter to default values if parsing fails
+		frontMatter = FrontMatter{}
 	}
 
 	htmlContent, err := convertMarkdownToHTML(markdownContent)
@@ -124,7 +130,7 @@ func processMarkdownFile(filePath, outputDir, themeDir string) error {
 		return fmt.Errorf("failed to convert Markdown: %w", err)
 	}
 
-	outputFileName := filepath.Base(filePath[:len(filePath)-len(filepath.Ext(filePath))]) + ".html"
+		outputFileName := filepath.Base(filePath[:len(filePath)-len(filepath.Ext(filePath))]) + ".html"
 	outputPath := filepath.Join(outputDir, outputFileName)
 
 	if err := writeHTMLFile(outputPath, frontMatter, htmlContent, themeDir); err != nil {
@@ -243,3 +249,4 @@ func copyFile(src, dest string) (int64, error) {
 
 	return io.Copy(destFile, sourceFile)
 }
+
