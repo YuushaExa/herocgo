@@ -82,7 +82,7 @@ func main() {
 			wg.Add(1)
 			go func(filePath string) {
 				defer wg.Done()
-				if err := processMarkdownFile(filePath, publicDir, themeDir, config); err != nil {
+				if err := processMarkdownFile(filePath, publicDir, themeDir, config, cache); err != nil {
 					log.Printf("Failed to process file %s: %v", filePath, err)
 				}
 			}(path)
@@ -196,7 +196,7 @@ func inferTemplateType(path, layoutsDir string) string {
 // Content processing
 
 // processMarkdownFile processes a single markdown file and writes it to the public directory
-func processMarkdownFile(filePath, outputDir, themeDir string, config Config) error {
+func processMarkdownFile(filePath, outputDir, themeDir string, config Config, cache *TemplateCache) error {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
@@ -224,7 +224,7 @@ func processMarkdownFile(filePath, outputDir, themeDir string, config Config) er
 	}
 
 	// Render the HTML using the base template and write the output
-	if err := writeHTMLFile(outputPath, frontMatter, htmlContent, themeDir, config); err != nil {
+	if err := writeHTMLFile(outputPath, frontMatter, htmlContent, themeDir, config, cache); err != nil {
 		return fmt.Errorf("failed to write HTML file: %w", err)
 	}
 
@@ -255,17 +255,17 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 	md := goldmark.New()
 	var buf strings.Builder
 	if err := md.Convert(content, &buf); err != nil {
-		return "", fmt.Errorf("failed to convert markdown: %w", err)
+		return "", fmt.Errorf("failed to convert markdown to HTML: %w", err)
 	}
 	return buf.String(), nil
 }
 
-// writeHTMLFile writes the HTML content to a file
-func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string, config Config) error {
+// writeHTMLFile writes the rendered HTML to a file
+func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string, config Config, cache *TemplateCache) error {
 	tmplPath := filepath.Join(themeDir, "layouts", "base.html")
-	tmpl, err := template.New("base.html").ParseFiles(tmplPath)
+	tmpl, err := cache.templates["base"]
 	if err != nil {
-		return fmt.Errorf("failed to parse template: %w", err)
+		return fmt.Errorf("failed to load base template: %w", err)
 	}
 
 	// Prepare data for template rendering
@@ -289,6 +289,7 @@ func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir stri
 
 	return nil
 }
+
 
 // copyStaticFiles copies static files like images, CSS, etc., from the theme to the public directory
 func copyStaticFiles(themeDir, publicDir string) {
