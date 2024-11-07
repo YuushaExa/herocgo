@@ -1,8 +1,8 @@
 ---
-title: "TestingTitles
-date: date-name"
+title: "TestingTitles"
+date: "date-name"
 author: "author-name"
----
+--
 
 # My First Blog Post
 
