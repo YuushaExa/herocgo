@@ -184,21 +184,16 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 }
 
 // writeHTMLFile creates an HTML file with escaped title and description to prevent XSS
+// writeHTMLFile creates an HTML file with escaped title and description to prevent XSS
 func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string) error {
-    // Define the paths for the layout and the partial
-    tmplPath := filepath.Join(themeDir, "layouts", "base.html")
-    partialsPath := filepath.Join(themeDir, "layouts", "partials", "head.html")
+    // Paths for layout and partials
+    baseTemplatePath := filepath.Join(themeDir, "layouts", "base.html")
+    partialTemplatePath := filepath.Join(themeDir, "layouts", "partials", "head.html")
 
-    // Parse the base template and the head partial
-    tmpl, err := template.New("base").ParseFiles(tmplPath)
+    // Load both the base layout and the partial template
+    tmpl, err := template.New("base").ParseFiles(baseTemplatePath, partialTemplatePath)
     if err != nil {
-        return fmt.Errorf("failed to load layout: %w", err)
-    }
-
-    // Parse the head partial into the template
-    tmpl, err = tmpl.ParseFiles(partialsPath)
-    if err != nil {
-        return fmt.Errorf("failed to parse partials: %w", err)
+        return fmt.Errorf("failed to load templates: %w", err)
     }
 
     // Create the output HTML file
@@ -219,8 +214,8 @@ func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir stri
         Content:     htmlContent,
     }
 
-    // Execute the template and write the content to the file
-    if err := tmpl.Execute(file, data); err != nil {
+    // Execute the base template with the provided data
+    if err := tmpl.ExecuteTemplate(file, "base", data); err != nil {
         return fmt.Errorf("failed to execute template: %w", err)
     }
 
