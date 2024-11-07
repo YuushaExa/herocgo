@@ -246,12 +246,11 @@ func extractFrontMatter(content []byte) (FrontMatter, []byte, error) {
 	if strings.HasPrefix(contentStr, "---") {
 		parts := strings.SplitN(contentStr, "\n---\n", 2)
 		if len(parts) == 2 {
-			meta := strings.Trim(parts[0], "-+ \n")
-			body := parts[1]
+			meta := parts[0]
 			if err := yaml.Unmarshal([]byte(meta), &fm); err != nil {
-				return fm, []byte(body), fmt.Errorf("failed to parse YAML front matter: %w", err)
+				return fm, nil, fmt.Errorf("failed to parse YAML front matter: %w", err)
 			}
-			return fm, []byte(body), nil
+			return fm, []byte(parts[1]), nil
 		}
 	}
 	return fm, content, nil
@@ -267,20 +266,23 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 }
 
 func writeHTMLFile(filePath string, frontMatter FrontMatter, content string, themeDir string, config Config) error {
-	// Create template data with the content and front matter
 	data := TemplateData{
 		Site:    config,
 		Page:    frontMatter,
 		Content: content,
 	}
 
-	// Load the base template and render it
-	tmpl, ok := templateCache.templates["base.html"]
+	cache, err := loadTemplates(themeDir)
+	if err != nil {
+		return fmt.Errorf("failed to load templates: %w", err)
+	}
+
+	// Use the template cache here
+	tmpl, ok := cache.templates["base.html"]
 	if !ok {
 		return fmt.Errorf("base template not found")
 	}
 
-	// Execute the template and write it to the output file
 	outputFile, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
@@ -295,24 +297,20 @@ func writeHTMLFile(filePath string, frontMatter FrontMatter, content string, the
 }
 
 func renderTaxonomies(cache *TemplateCache, taxonomies map[string][]string, postsByTerm map[string]map[string][]Post, publicDir string) {
-	// Rendering taxonomies (e.g., tags, categories)
 	taxonomyTemplate := cache.templates["taxonomy.html"]
 	if taxonomyTemplate == nil {
 		log.Println("Warning: Taxonomy template not found.")
 		return
 	}
 
-	// Generate and render taxonomy pages
 	for termType, terms := range taxonomies {
 		for _, term := range terms {
-			// Create a taxonomy data structure
 			data := map[string]interface{}{
 				"TermType": termType,
 				"Term":     term,
 				"Posts":    postsByTerm[termType][term],
 			}
 
-			// Render the taxonomy page for each term
 			outputPath := filepath.Join(publicDir, termType, term+".html")
 			outputFile, err := os.Create(outputPath)
 			if err != nil {
@@ -329,7 +327,6 @@ func renderTaxonomies(cache *TemplateCache, taxonomies map[string][]string, post
 }
 
 func copyStaticFiles(themeDir, publicDir string) {
-	// Copy static files (e.g., images, CSS, JavaScript)
 	staticDir := filepath.Join(themeDir, "static")
 	err := filepath.Walk(staticDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -339,17 +336,14 @@ func copyStaticFiles(themeDir, publicDir string) {
 			return nil
 		}
 
-		// Copy file to public directory
 		relativePath := strings.TrimPrefix(path, staticDir)
 		destPath := filepath.Join(publicDir, relativePath)
 		destDir := filepath.Dir(destPath)
 
-		// Create destination directory if it does not exist
 		if err := os.MkdirAll(destDir, os.ModePerm); err != nil {
 			return err
 		}
 
-		// Copy the file
 		sourceFile, err := os.Open(path)
 		if err != nil {
 			return err
