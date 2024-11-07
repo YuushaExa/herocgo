@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"html"
 	"io"
 	"log"
 	"os"
@@ -14,7 +13,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
-	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark
 )
 
 // Structs for front matter, configuration, and template caching
@@ -216,7 +215,7 @@ func inferTemplateType(path, layoutsDir string) string {
 
 // Content processing
 
-func processMarkdownFile(filePath, outputDir, themeDir string, cache *TemplateCache) error {
+func processMarkdownFile(filePath, outputDir, themeDir string, config Config) error {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
@@ -236,8 +235,14 @@ func processMarkdownFile(filePath, outputDir, themeDir string, cache *TemplateCa
 	outputFileName := filepath.Base(filePath[:len(filePath)-len(filepath.Ext(filePath))]) + ".html"
 	outputPath := filepath.Join(outputDir, outputFileName)
 
-	return writeHTMLFile(outputPath, frontMatter, htmlContent, cache)
+	// Pass in themeDir and config as additional arguments
+	if err := writeHTMLFile(outputPath, frontMatter, htmlContent, themeDir, config); err != nil {
+		return fmt.Errorf("failed to write HTML file: %w", err)
+	}
+
+	return nil
 }
+
 
 func extractFrontMatter(content []byte) (FrontMatter, []byte, error) {
 	var fm FrontMatter
