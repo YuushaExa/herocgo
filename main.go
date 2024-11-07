@@ -242,7 +242,7 @@ func extractFrontMatter(content []byte) (FrontMatter, []byte, error) {
 			meta := strings.Trim(parts[0], "-+ \n")
 			body := parts[1]
 			if err := yaml.Unmarshal([]byte(meta), &fm); err != nil {
-				return fm, []byte(body), fmt.Errorf("failed to parse YAML front matter: %w", err)
+				return fm, nil, fmt.Errorf("failed to parse front matter: %w", err)
 			}
 			return fm, []byte(body), nil
 		}
@@ -262,10 +262,9 @@ func convertMarkdownToHTML(content []byte) (string, error) {
 
 // writeHTMLFile writes the rendered HTML to a file
 func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir string, config Config, cache *TemplateCache) error {
-	tmplPath := filepath.Join(themeDir, "layouts", "base.html")
-	tmpl, err := cache.templates["base"]
-	if err != nil {
-		return fmt.Errorf("failed to load base template: %w", err)
+	tmpl, exists := cache.templates["base"]
+	if !exists {
+		return fmt.Errorf("failed to find base template")
 	}
 
 	// Prepare data for template rendering
@@ -288,37 +287,4 @@ func writeHTMLFile(outputPath string, fm FrontMatter, htmlContent, themeDir stri
 	}
 
 	return nil
-}
-
-
-// copyStaticFiles copies static files like images, CSS, etc., from the theme to the public directory
-func copyStaticFiles(themeDir, publicDir string) {
-	staticDir := filepath.Join(themeDir, "static")
-	if err := filepath.Walk(staticDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return err
-		}
-
-		// Copy the file to the public directory
-		destPath := filepath.Join(publicDir, filepath.Base(path))
-		inputFile, err := os.Open(path)
-		if err != nil {
-			return fmt.Errorf("failed to open static file: %w", err)
-		}
-		defer inputFile.Close()
-
-		outputFile, err := os.Create(destPath)
-		if err != nil {
-			return fmt.Errorf("failed to create static file in public directory: %w", err)
-		}
-		defer outputFile.Close()
-
-		if _, err := io.Copy(outputFile, inputFile); err != nil {
-			return fmt.Errorf("failed to copy static file: %w", err)
-		}
-
-		return nil
-	}); err != nil {
-		log.Printf("Error copying static files: %v", err)
-	}
 }
