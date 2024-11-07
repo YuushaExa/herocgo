@@ -117,56 +117,57 @@ func loadConfig(path string) (Config, error) {
 
 // Function to load templates with helper functions registered
 func loadTemplates(themeDir string) (*TemplateCache, error) {
-	cache := &TemplateCache{
-		templates: make(map[string]*template.Template),
-		partials:  new(template.Template),
-	}
-	layoutsDir := filepath.Join(themeDir, "layouts")
+    cache := &TemplateCache{
+        templates: make(map[string]*template.Template),
+        partials:  new(template.Template),
+    }
+    layoutsDir := filepath.Join(themeDir, "layouts")
 
-	// Custom function map with helpers like partial, partialCached, and title
-	funcMap := template.FuncMap{
-		"partial":       partialFunc(themeDir),
-		"partialCached": partialCachedFunc(themeDir),
-		"title":         strings.Title,
-	}
+    // Custom function map with helpers like partial, partialCached, and title
+    funcMap := template.FuncMap{
+        "partial":       partialFunc(themeDir),
+        "partialCached": partialCachedFunc(themeDir),
+        "title":         strings.Title,
+    }
 
-	// Load and parse partials
-	partialsGlob := filepath.Join(layoutsDir, "partials", "*.html")
-	if partialFiles, err := filepath.Glob(partialsGlob); err == nil && len(partialFiles) > 0 {
-		partials, err := template.New("partials").Funcs(funcMap).ParseGlob(partialsGlob)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse partial templates: %w", err)
-		}
-		cache.partials = partials
-	} else {
-		log.Printf("No partial templates found in %s, proceeding without them.", partialsGlob)
-	}
+    // Load and parse partials
+    partialsGlob := filepath.Join(layoutsDir, "partials", "*.html")
+    if partialFiles, err := filepath.Glob(partialsGlob); err == nil && len(partialFiles) > 0 {
+        partials, err := template.New("partials").Funcs(funcMap).ParseGlob(partialsGlob)
+        if err != nil {
+            return nil, fmt.Errorf("failed to parse partial templates: %w", err)
+        }
+        cache.partials = partials
+    } else {
+        log.Printf("No partial templates found in %s, proceeding without them.", partialsGlob)
+    }
 
-	// Load other templates (e.g., base.html) with funcMap applied
-	err := filepath.Walk(layoutsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".html") {
-			return err
-		}
+    // Load other templates (e.g., base.html) with funcMap applied
+    err := filepath.Walk(layoutsDir, func(path string, info os.FileInfo, err error) error {
+        if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".html") {
+            return err
+        }
 
-		templateType := inferTemplateType(path, layoutsDir)
+        templateType := inferTemplateType(path, layoutsDir)
 
-		// Apply the funcMap to each template
-		tmpl, err := template.New(filepath.Base(path)).Funcs(funcMap).ParseFiles(path)
-		if err != nil {
-			log.Printf("Skipping template %s due to parsing error: %v", path, err)
-			return nil // Continue without halting on template parse errors
-		}
+        // Apply the funcMap to each template
+        tmpl, err := template.New(filepath.Base(path)).Funcs(funcMap).ParseFiles(path)
+        if err != nil {
+            log.Printf("Skipping template %s due to parsing error: %v", path, err)
+            return nil // Continue without halting on template parse errors
+        }
 
-		// Register the template
-		cache.templates[templateType] = tmpl
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to load templates: %w", err)
-	}
+        // Register the template
+        cache.templates[templateType] = tmpl
+        return nil
+    })
+    if err != nil {
+        return nil, fmt.Errorf("failed to load templates: %w", err)
+    }
 
-	return cache, nil
+    return cache, nil
 }
+
 
 
 
